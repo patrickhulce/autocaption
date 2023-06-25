@@ -4,6 +4,8 @@ import https from 'https'
 import parseCsvFromStream from 'csv-parser'
 import Bluebird from 'bluebird'
 import {exec} from 'child_process'
+import {Configuration, OpenAIApi} from 'openai'
+import sharp from 'sharp'
 
 // Whether to force overwrite existing captions.
 const FORCE_ALL = false
@@ -44,6 +46,8 @@ function readRows(): Promise<Array<CsvRow>> {
             failed: false,
             urlObject,
             ...otherProprties,
+            width: Number(otherProprties.width),
+            height: Number(otherProprties.height),
           })
         } catch (err) {
           results.push({failed: true, row: data, url: urlField, err})
@@ -156,21 +160,44 @@ function cleanUrl(url: string): string {
     .replace('[/url]', '')
 }
 
+async function getImageDimensions(filePath: string): Promise<{width: number; height: number}> {
+  const image = sharp(filePath)
+  const metadata = await image.metadata()
+
+  return {
+    width: metadata.width || 0,
+    height: metadata.height || 0,
+  }
+}
+
 type OutputRow = {
   url: string
   normalized_url: string
   caption: string
   ocr: string
   ocr_qa: string
+  gpt: string
   final: string
+  width: number
+  height: number
 }
 
 function write(results: Array<OutputRow>) {
   fs.writeFileSync(
     OUT_FILE,
-    `URL,NORMALIZED_URL,CAPTION,OCR,OCR_QA,FINAL\n${results
+    `URL,NORMALIZED_URL,WIDTH,HEIGHT,CAPTION,OCR,OCR_QA,GPT,FINAL\n${results
       .map(row =>
-        [row.url, row.normalized_url, row.caption, row.ocr, row.ocr_qa, row.final]
+        [
+          row.url,
+          row.normalized_url,
+          row.width.toString(),
+          row.height.toString(),
+          row.caption,
+          row.ocr,
+          row.ocr_qa,
+          row.gpt,
+          row.final,
+        ]
           .map(item => JSON.stringify(item.replace(/"/g, "'")))
           .join(','),
       )
@@ -223,7 +250,81 @@ async function getFileForUrl(url: string): Promise<string> {
   return filePath
 }
 
-function getFinal(data: {caption: string; ocr: string; ocr_qa: string}): string {
+type DataForFinal = Omit<OutputRow, 'final' | 'url' | 'normalized_url' | 'gpt'>
+
+async function getGpt(data: DataForFinal): Promise<string> {
+  if (!process.env.OPENAI_API_KEY) return ''
+
+  const configuration = new Configuration({
+    apiKey: process.env.OPENAI_API_KEY,
+  })
+  const openai = new OpenAIApi(configuration)
+
+  console.log('Asking OpenAI for final caption...')
+  const dataToUse = isLikelyTextBased(data.caption) ? {...data, caption: ''} : data
+  const chatCompletion = await openai.createChatCompletion({
+    model: 'gpt-3.5-turbo',
+    messages: [
+      {
+        role: 'user',
+        content: `
+        You are determining the appropriate caption for an image using unreliable data.
+        Your goal is to write a caption that is as accurate as possible to the underlying image given the following JSON data:
+
+        "width" - The width of the image in pixels.
+        "height" - The height of the image in pixels.
+        "caption" - A faulty machine learning model that generates a caption based on the image.
+           This model is frequently wrong and does not understand that many of these images are logos.
+           It is particularly bad at reading text. Do not trust any statement that "the sign says X".
+        "ocr" - A machine learning model that reads raw text from arbitrary images.
+        "ocr_qa" - A machine learning model that reads raw text from the image.
+
+        Reasoning to use:
+
+        - If there is not enough data to make a decision, use the shortest possible description that you believe to be accurate.
+        - If an image is small (under ~80 pixels in both dimensions) and similar to a square, or
+         described as particular colors such as "black and white" or "white and blue", it is likely an icon.
+        - If an image large (500px+) and much wider than it is tall, it is likely a banner with text.
+        - If an image is described by the caption as a photograph of a particular scene, it is likely accurate.
+
+        Output Format:
+
+        Respond with just the string of the caption that describes the given image.
+
+        Examples:
+
+        Input: {width: 60, height: 60, caption: "A black and white image of a bird", ocr: "", ocr_qa: ""}
+        Output: "The Twitter icon"
+
+        Input: {width: 50, height: 50, caption: "A black and white image of something", ocr: "", ocr_qa: ""}
+        Output: "An icon"
+
+        Input: {width: 400, height: 50, caption: "", ocr: "", ocr_qa: ""}
+        Output: "A text banner"
+
+        Input: {width: 700, height: 100, caption: "", ocr: "BESTD2021 WINNER", ocr_qa: "Compass"}
+        Output: "A text banner describing Compass's awards"
+
+        Input: {width: 200, height: 200, caption: "", ocr: "CHRIS BEST REALTY", ocr_qa: "Christopher Best"}
+        Output: "The logo of Christopher Best"
+
+        Input: {width: 400, height: 300, caption: "A pool with a lounge chair and cabana", ocr: "", ocr_qa: ""}
+        Output: "A pool with a lounge chair and cabana"
+
+        Now output the caption corresponding to the data enclosed in """ below.
+
+        """${JSON.stringify(dataToUse)}"""
+      `,
+      },
+    ],
+  })
+
+  return chatCompletion.data.choices[0].message?.content || ''
+}
+
+async function getFinal(data: DataForFinal): Promise<string> {
+  if (data.width < 100 && data.height < 100) return ''
+
   return ''
 }
 
@@ -246,12 +347,29 @@ export async function main() {
         try {
           console.log(`Processing URL #${index}`, row.urlObject.href)
           const filePath = await getFileForUrl(row.urlObject.href)
+
+          const {width, height} = await getImageDimensions(filePath)
+          console.log(`Got dimensions for #${index}: ${width}x${height}`)
+
+          console.log(`Getting caption for #${index}`)
           const caption = row.caption && !FORCE_ALL ? row.caption : await getCaption(filePath)
           console.log(`Got caption for #${index}:`, caption)
+
+          console.log(`Getting OCR for #${index}`)
           const ocr = row.ocr && !FORCE_ALL ? row.ocr : await getOcr(filePath, caption)
           console.log(`Got OCR for #${index}:`, ocr)
+
+          console.log(`Getting OCR-QA for #${index}`)
           const ocr_qa = row.ocr_qa && !FORCE_ALL ? row.ocr_qa : await getOcrQa(filePath, caption)
           console.log(`Got OCR-QA for #${index}:`, ocr_qa)
+
+          console.log(`Getting GPT for #${index}`)
+          const gpt = await getGpt({width, height, caption, ocr, ocr_qa})
+          console.log(`Got GPT for #${index}`)
+
+          const final = await getFinal({width, height, caption, ocr, ocr_qa})
+          console.log(`Got final for #${index}`)
+
           results.push({
             ...row,
             url: row.url || '',
@@ -259,7 +377,8 @@ export async function main() {
             caption,
             ocr,
             ocr_qa,
-            final: getFinal({caption, ocr, ocr_qa}),
+            gpt,
+            final,
           })
         } catch (err) {
           console.error(`Processing URL #${index} failed:`, err)
