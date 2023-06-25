@@ -41,4 +41,6 @@ conda env export --from-history > environment.yml # Update the equivalent of `pa
 
 # Milestone Time Tracking
 
-- Working captioner ~1 hour 10 minutes (but awful results)
+- Data cleanup ~15 minutes
+- Working captioner ~55 minutes (but awful results)
+- Working 2 OCR variants ~90 minutes
