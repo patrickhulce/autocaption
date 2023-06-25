@@ -112,9 +112,10 @@ function concatenateStringValues(data: any): string {
   return result
 }
 
-function isLikelyTextBased(caption: string): boolean {
+function isLikelyTextBased(data: Partial<OutputRow>): boolean {
+  const {caption = ''} = data
   // This is almost always the icons.
-  if (caption.includes('black and white') || caption.includes('white and black')) return false
+  if (isLikelyIcon(data)) return false
   // Signs, posters, and collages all common captions for logos/banners.
   if (caption.match(/\b(sign|poster|collage)\b/)) return true
   // "Blurry image" usually means there's a big gradient background (sometimes text).
@@ -123,9 +124,18 @@ function isLikelyTextBased(caption: string): boolean {
   return false
 }
 
+function isLikelyIcon(data: Partial<OutputRow>): boolean {
+  const {caption = '', width = 0, height = 0} = data
+  if (caption.includes('black and white') || caption.includes('white and black')) return true
+  // It's a perfect square.
+  if (width && height && width === height) return true
+
+  return false
+}
+
 async function getOcr(url: string, caption: string): Promise<string> {
   // If the caption doesn't contain any of the keywords, don't run the OCR.
-  if (!isLikelyTextBased(caption)) return ''
+  if (!isLikelyTextBased({caption})) return ''
 
   return runPython(['./ocr.py', url], stdout => {
     try {
@@ -137,7 +147,7 @@ async function getOcr(url: string, caption: string): Promise<string> {
   })
 }
 async function getOcrQa(url: string, caption: string): Promise<string> {
-  if (!isLikelyTextBased(caption)) return ''
+  if (!isLikelyTextBased({caption})) return ''
 
   return runPython(['./ocr-qa.py', url], stdout => {
     try {
@@ -261,7 +271,7 @@ async function getGpt(data: DataForFinal): Promise<string> {
   const openai = new OpenAIApi(configuration)
 
   console.log('Asking OpenAI for final caption...')
-  const dataToUse = isLikelyTextBased(data.caption) ? {...data, caption: ''} : data
+  const dataToUse = isLikelyTextBased(data) ? {...data, caption: ''} : data
   const chatCompletion = await openai.createChatCompletion({
     model: 'gpt-3.5-turbo',
     messages: [
@@ -290,6 +300,7 @@ async function getGpt(data: DataForFinal): Promise<string> {
         Output Format:
 
         Respond with just the string of the caption that describes the given image.
+        Do not prefix it with "the image likely is" or "I think" or any other qualifiers.
 
         Examples:
 
@@ -379,6 +390,8 @@ export async function main() {
             ocr_qa,
             gpt,
             final,
+            width,
+            height,
           })
         } catch (err) {
           console.error(`Processing URL #${index} failed:`, err)
