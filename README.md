@@ -38,3 +38,7 @@ conda activate autocaption
 conda install pytorch torchvision -c pytorch # Or whatever deps you're adding.
 conda env export --from-history > environment.yml # Update the equivalent of `package.json`
 ```
+
+# Milestone Time Tracking
+
+- Working captioner ~1 hour 10 minutes (but awful results)
