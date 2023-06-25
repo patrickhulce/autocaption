@@ -1,13 +1,15 @@
 import * as fs from 'fs'
+import * as path from 'path'
 import parseCsvFromStream from 'csv-parser'
 import Bluebird from 'bluebird'
+import {exec} from 'child_process'
 
 // Whether to force overwrite existing captions.
 const FORCE = false
 // The path to a CSV in the format of "URL","CAPTION",*
 const CSV_FILE_PATH = process.argv[2] || './examples/test.csv'
 // The path to the CSV that will be written to.
-const OUT_FILE = CSV_FILE_PATH.replace(/\.csv$/, '-out.csv')
+const OUT_FILE = CSV_FILE_PATH.replace(/\.csv$/, '.out.csv')
 
 type CsvRow =
   | {failed: false; url: URL; caption?: string}
@@ -51,7 +53,26 @@ function readRows(): Promise<Array<CsvRow>> {
 }
 
 async function getCaption(url: string): Promise<string> {
-  return `caption for ${url}`
+  return new Promise((resolve, reject) => {
+    const pathToScript = path.resolve(__dirname, 'caption.py')
+    exec(`python "${pathToScript}" ${JSON.stringify(url)}`, (error, stdout, stderr) => {
+      if (error) {
+        console.error(
+          `Execution error in python:\n\n${error.stack}\n\nSTDOUT:${stdout}\n\nSTDERR:${stderr}`,
+        )
+        reject(new Error(`Execution error in python: ${error.message}`))
+        return
+      }
+
+      try {
+        const [{generated_text}] = JSON.parse(stdout)
+        if (typeof generated_text == 'string') resolve(generated_text)
+        else reject(new Error(`Expected string, got ${JSON.stringify(generated_text)}`))
+      } catch (err) {
+        reject(new Error(`Failed to parse JSON: ${stdout}`))
+      }
+    })
+  })
 }
 
 export async function main() {
@@ -70,13 +91,15 @@ export async function main() {
           return
         }
 
-        console.log(`Processing URL #${index}`, row.url.href)
-        const caption = await getCaption(row.url.href)
-        console.log(`Got caption for #${index}:`, caption)
-        results.push([row.url.href, caption])
+        try {
+          console.log(`Processing URL #${index}`, row.url.href)
+          const caption = await getCaption(row.url.href)
+          console.log(`Got caption for #${index}:`, caption)
+          results.push([row.url.href, caption])
+        } catch (err) {}
       }
     },
-    {concurrency: 10},
+    {concurrency: 1},
   )
 
   fs.writeFileSync(

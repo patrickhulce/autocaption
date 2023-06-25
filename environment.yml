@@ -1,0 +1,9 @@
+name: autocaption
+channels:
+  - defaults
+dependencies:
+  - python=3.8
+  - transformers
+  - torchvision
+  - pytorch
+prefix: /usr/local/Caskroom/miniconda/base/envs/autocaption
