@@ -13,7 +13,7 @@ const OUT_FILE = CSV_FILE_PATH.replace(/\.csv$/, '.out.csv')
 
 type CsvRow =
   | {failed: false; url: URL; caption?: string}
-  | {failed: true; row: Record<string, unknown>; url?: string}
+  | {failed: true; row: Record<string, unknown>; url?: string; err?: unknown}
 
 function readRows(): Promise<Array<CsvRow>> {
   let results: Array<CsvRow> = []
@@ -28,22 +28,22 @@ function readRows(): Promise<Array<CsvRow>> {
         }))
         const urlField = entries.find(({key}) => key === 'url')?.value
         const captionField = entries.find(({key}) => key === 'caption')?.value
-        if (!urlField || typeof urlField !== 'string' || !urlField.startsWith('http')) {
+        if (!urlField || typeof urlField !== 'string') {
           results.push({failed: true, row: data})
           return
         }
 
-        const url = new URL(urlField)
-        if (url.href !== urlField) {
-          results.push({failed: true, row: data, url: urlField})
-          return
-        }
+        try {
+          const url = new URL(cleanUrl(urlField))
 
-        results.push({
-          failed: false,
-          url,
-          caption: typeof captionField === 'string' ? captionField : undefined,
-        })
+          results.push({
+            failed: false,
+            url,
+            caption: typeof captionField === 'string' ? captionField : undefined,
+          })
+        } catch (err) {
+          results.push({failed: true, row: data, url: urlField, err})
+        }
       })
       .on('error', reject)
       .on('end', () => {
@@ -75,6 +75,25 @@ async function getCaption(url: string): Promise<string> {
   })
 }
 
+function cleanUrl(url: string): string {
+  if (url.startsWith('//')) url = `https:${url}`
+  return url
+    .trim()
+    .replace(/["’]+( .*)?$/g, '')
+    .replace(/>([<\s].*)?$/g, '')
+    .replace('[/img]', '')
+    .replace('[/url]', '')
+}
+
+function write(results: Array<[string, string]>) {
+  fs.writeFileSync(
+    OUT_FILE,
+    `URL,CAPTION\n${results
+      .map(([url, caption]) => `"${url.replace(/"/g, "'")}","${caption.replace(/"/g, "'")}"`)
+      .join('\n')}`,
+  )
+}
+
 export async function main() {
   const results: Array<[string, string]> = []
   const rows = await readRows()
@@ -82,7 +101,7 @@ export async function main() {
     rows,
     async (row, index) => {
       if (row.failed) {
-        if (row.url) console.log('Failed to parse URL:', row.url)
+        if (row.url) console.log('Failed to parse URL:', row.url, row.err)
         else console.log('Failed to parse row:', row.row)
       } else {
         if (row.caption && !FORCE) {
@@ -96,18 +115,17 @@ export async function main() {
           const caption = await getCaption(row.url.href)
           console.log(`Got caption for #${index}:`, caption)
           results.push([row.url.href, caption])
-        } catch (err) {}
+        } catch (err) {
+          console.error(`Processing URL #${index} failed:`, err)
+        }
+
+        write(results)
       }
     },
-    {concurrency: 1},
+    {concurrency: 5},
   )
 
-  fs.writeFileSync(
-    OUT_FILE,
-    `URL,CAPTION\n${results
-      .map(([url, caption]) => `"${url.replace(/"/g, "'")}","${caption.replace(/"/g, "'")}"`)
-      .join('\n')}`,
-  )
+  write(results)
 }
 
 main().catch(err => {
