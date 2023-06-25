@@ -1,7 +1,9 @@
-URL,CAPTION
-"https://www.compass.com/m3/ee21a4aef71afe28a90e1739ec1caf45c8a27e34/300x300.jpg","a man in a suit and tie smiling "
-"https://i.imgur.com/hpiGU9U.jpeg","a street sign with a street name on it "
-"https://upload.wikimedia.org/wikipedia/commons/thumb/0/05/Facebook_Logo_%282019%29.png/1200px-Facebook_Logo_%282019%29.png","a blue and white sign with a blue sky "
-"https://cdn.logojoy.com/wp-content/uploads/2018/05/30150850/1613-768x591.png","a sign that says 'don't drink' "
-"https://lh3.googleusercontent.com/p/AF1QipO1aYgsCucrVU-FQK6kPRfkkLQqaZoGEbghjNfN=s680-w680-h510","a pool with a pool table and a lawn chair "
-"https://lh3.googleusercontent.com/p/AF1QipMANaINHzrc7kRQR3bRm_RdMdHlDnYNG4WR4qvE=s680-w680-h510","a living room with a couch, chairs, and a table "
+URL,NORMALIZED_URL,CAPTION,OCR,OCR_QA,FINAL
+"https://lh3.googleusercontent.com/p/AF1QipO1aYgsCucrVU-FQK6kPRfkkLQqaZoGEbghjNfN=s680-w680-h510","https://lh3.googleusercontent.com/p/AF1QipO1aYgsCucrVU-FQK6kPRfkkLQqaZoGEbghjNfN=s680-w680-h510","a pool with a pool table and a lawn chair ","","",""
+"https://www.compass.com/m3/ee21a4aef71afe28a90e1739ec1caf45c8a27e34/300x300.jpg","https://www.compass.com/m3/ee21a4aef71afe28a90e1739ec1caf45c8a27e34/300x300.jpg","a man in a suit and tie smiling ","","",""
+"https://lh3.googleusercontent.com/p/AF1QipMANaINHzrc7kRQR3bRm_RdMdHlDnYNG4WR4qvE=s680-w680-h510","https://lh3.googleusercontent.com/p/AF1QipMANaINHzrc7kRQR3bRm_RdMdHlDnYNG4WR4qvE=s680-w680-h510","a living room with a couch, chairs, and a table ","","",""
+"https://cdn.logojoy.com/wp-content/uploads/2018/05/30150850/1613-768x591.png","https://cdn.logojoy.com/wp-content/uploads/2018/05/30150850/1613-768x591.png","a sign that says 'don't drink' ","THE","THE",""
+"https://upload.wikimedia.org/wikipedia/commons/thumb/0/05/Facebook_Logo_%282019%29.png/1200px-Facebook_Logo_%282019%29.png","https://upload.wikimedia.org/wikipedia/commons/thumb/0/05/Facebook_Logo_%282019%29.png/1200px-Facebook_Logo_%282019%29.png","a blue and white sign with a blue sky ","","",""
+"https://www.compass.com/m/13/3e157a49-6a54-487f-b6ee-4cd3f4d7fc52/origin.jpg","https://www.compass.com/m/13/3e157a49-6a54-487f-b6ee-4cd3f4d7fc52/origin.jpg","a large poster of a baseball player on a baseball field ","BEST2022300 WEST 2021<s_total_price> 9029 TOP REA LTOR","BEST2022300 WEST 2021<s_total_price> 9029 TOP REA LTOR",""
+"https://www.compass.com/m/13/cbb3122d-724b-45ea-89b2-9650b55348f5/origin.jpg","https://www.compass.com/m/13/cbb3122d-724b-45ea-89b2-9650b55348f5/origin.jpg","a sign that says 'no parking' ","UNLOCKNJHOMESPOWERED BY CHRISTOPHER CHIN COMPASS REALTORE -SALESASSOCIATE PREMIER MARKETING EXPERT WWW.UNLOCKNJHOMES.COM","UNLOCKNJHOMESPOWERED BY CHRISTOPHER CHIN COMPASS REALTORE -SALESASSOCIATE PREMIER MARKETING EXPERT WWW.UNLOCKNJHOMES.COM",""
+"https://i.imgur.com/hpiGU9U.jpeg","https://i.imgur.com/hpiGU9U.jpeg","a street sign with a street name on it ","","",""
