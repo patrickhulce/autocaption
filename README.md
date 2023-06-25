@@ -47,3 +47,4 @@ conda env export --from-history > environment.yml # Update the equivalent of `pa
 - Data cleanup ~15 minutes
 - Working captioner ~55 minutes (but awful results)
 - Working 2 OCR variants ~90 minutes
+- GPT-based combiner ~45 minutes
