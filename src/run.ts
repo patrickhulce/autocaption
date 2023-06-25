@@ -5,9 +5,9 @@ import Bluebird from 'bluebird'
 // Whether to force overwrite existing captions.
 const FORCE = false
 // The path to a CSV in the format of "URL","CAPTION",*
-const CSV_FILE_PATH = './examples/test.csv'
+const CSV_FILE_PATH = process.argv[2] || './examples/test.csv'
 // The path to the CSV that will be written to.
-const OUT_FILE = './examples/test.out.csv'
+const OUT_FILE = CSV_FILE_PATH.replace(/\.csv$/, '-out.csv')
 
 type CsvRow =
   | {failed: false; url: URL; caption?: string}
@@ -59,20 +59,20 @@ export async function main() {
   const rows = await readRows()
   await Bluebird.map(
     rows,
-    async row => {
+    async (row, index) => {
       if (row.failed) {
         if (row.url) console.log('Failed to parse URL:', row.url)
         else console.log('Failed to parse row:', row.row)
       } else {
         if (row.caption && !FORCE) {
-          console.log('URL', row.url.pathname, 'already has a caption, skipping.', row)
+          console.log('URL', row.url.pathname, 'already has a caption, skipping.')
           results.push([row.url.href, row.caption])
           return
         }
 
-        console.log('Processing URL', row.url, '...')
+        console.log(`Processing URL #${index}`, row.url.href)
         const caption = await getCaption(row.url.href)
-        console.log(`Got caption for ${row.url.pathname}:`, caption)
+        console.log(`Got caption for #${index}:`, caption)
         results.push([row.url.href, caption])
       }
     },
