@@ -112,11 +112,49 @@ function concatenateStringValues(data: any): string {
   return result
 }
 
+/**
+ * Captions are trustworthy for actual photographs.
+ * Captions are not trustworthy for logos, banners, or icons.
+ * Problem is that it produces a photograph-like caption for these untrustworth items.
+ */
+function isCaptionLikelyTrustworthy(data: Partial<OutputRow>) {
+  const {caption = '', width = 0, height = 0} = data
+
+  // These are always logos.
+  if (caption.match(/\b(sign|poster|collage|clock)\b/)) return false
+  // These are almost always banners / graphic design elements.
+  if (caption.match(/a blurry (image|photo)/)) return false
+  // Square images are rarely photographs.
+  if (width === height) return false
+  // Mostly the Compass logos / icons
+  const mentionsBlackAndWhite =
+    caption.includes('black and white') || caption.includes('white and black')
+  if (mentionsBlackAndWhite) return false
+
+  // If the image is a standard photograph aspect ratio and discusses a person, a house, or furniture,
+  // it's probably trustworthy.
+
+  // Standard 4:3 ratio is 1.33 (landscape) 0.75 (portrait)
+  const hasDimensions = Boolean(width && height)
+  const isLandscape = hasDimensions && width / height > 1.2 && width / height < 1.4
+  const isPortrait = hasDimensions && width / height > 0.7 && width / height < 0.8
+  const isPhotographAspectRatio = isLandscape || isPortrait
+  const mentionsPerson = caption.match(
+    /\b(person|people|man|men|women|woman|child|boy|girl|family)\b/,
+  )
+  const mentionsHouse = caption.match(/\b(house|home|building|apartment)\b/)
+  const mentionsFurniture = caption.match(
+    /\b(table|chair|desk|couch|sofa|bed|lamp|light|window|door|kitchen|stairs|patio|living room|dining room)\b/,
+  )
+
+  return isPhotographAspectRatio && (mentionsPerson || mentionsHouse || mentionsFurniture)
+}
+
 function isLikelyTextBased(data: Partial<OutputRow>): boolean {
   const {caption = ''} = data
   if (isLikelyIcon(data)) return false
   // Signs, posters, and collages all common captions for logos/banners.
-  if (caption.match(/\b(sign|poster|collage)\b/)) return true
+  if (caption.match(/\b(sign|poster|collage|clock)\b/)) return true
   // "Blurry image" usually means there's a big gradient background (sometimes text).
   if (caption.includes('a blurry image')) return true
 
@@ -132,8 +170,7 @@ function isLikelyIcon(data: Partial<OutputRow>): boolean {
 }
 
 async function getOcr(url: string, data: Partial<OutputRow>): Promise<string> {
-  // If the caption doesn't contain any of the keywords, don't run the OCR.
-  if (!isLikelyTextBased(data)) return ''
+  if (isCaptionLikelyTrustworthy(data)) return ''
 
   return runPython(['./ocr.py', url], stdout => {
     try {
@@ -145,7 +182,7 @@ async function getOcr(url: string, data: Partial<OutputRow>): Promise<string> {
   })
 }
 async function getOcrQa(url: string, data: Partial<OutputRow>): Promise<string> {
-  if (!isLikelyTextBased(data)) return ''
+  if (isCaptionLikelyTrustworthy(data)) return ''
 
   return runPython(['./ocr-qa.py', url], stdout => {
     try {
@@ -162,7 +199,7 @@ function cleanUrl(url: string): string {
   if (url.startsWith('//')) url = `https:${url}`
   return url
     .trim()
-    .replace(/["’]+( .*)?$/g, '')
+    .replace(/["’”']+( .*)?$/g, '')
     .replace(/>([<\s].*)?$/g, '')
     .replace('[/img]', '')
     .replace('[/url]', '')
@@ -184,6 +221,7 @@ type OutputRow = {
   caption: string
   ocr: string
   ocr_qa: string
+  heuristic: string
   gpt: string
   final: string
   width: number
@@ -193,7 +231,7 @@ type OutputRow = {
 function write(results: Array<OutputRow>) {
   fs.writeFileSync(
     OUT_FILE,
-    `URL,NORMALIZED_URL,WIDTH,HEIGHT,CAPTION,OCR,OCR_QA,GPT,FINAL\n${results
+    `URL,NORMALIZED_URL,WIDTH,HEIGHT,CAPTION,OCR,OCR_QA,HEURISTIC,GPT,FINAL\n${results
       .map(row =>
         [
           row.url,
@@ -203,6 +241,7 @@ function write(results: Array<OutputRow>) {
           row.caption,
           row.ocr,
           row.ocr_qa,
+          row.heuristic,
           row.gpt,
           row.final,
         ]
@@ -258,10 +297,11 @@ async function getFileForUrl(url: string): Promise<string> {
   return filePath
 }
 
-type DataForFinal = Omit<OutputRow, 'final' | 'url' | 'normalized_url' | 'gpt'>
+type DataForFinal = Omit<OutputRow, 'final' | 'url' | 'normalized_url'>
 
-async function getGpt(data: DataForFinal): Promise<string> {
+async function getGpt(data: Omit<DataForFinal, 'gpt'>): Promise<string> {
   if (!process.env.OPENAI_API_KEY) return ''
+  if (isCaptionLikelyTrustworthy(data)) return ''
 
   const configuration = new Configuration({
     apiKey: process.env.OPENAI_API_KEY,
@@ -281,6 +321,7 @@ async function getGpt(data: DataForFinal): Promise<string> {
 
         "width" - The width of the image in pixels.
         "height" - The height of the image in pixels.
+        "heuristic" - A simple estimate of the type of image that this is.
         "caption" - A faulty machine learning model that generates a caption based on the image.
            This model is frequently wrong and does not understand that many of these images are logos.
            It is particularly bad at reading text. Do not trust any statement that "the sign says X".
@@ -302,22 +343,22 @@ async function getGpt(data: DataForFinal): Promise<string> {
 
         Examples:
 
-        Input: {width: 60, height: 60, caption: "A black and white image of a bird", ocr: "", ocr_qa: ""}
+        Input: {width: 60, height: 60, heuristic: "icon", caption: "A black and white image of a bird", ocr: "", ocr_qa: ""}
         Output: "The Twitter icon"
 
-        Input: {width: 50, height: 50, caption: "A black and white image of something", ocr: "", ocr_qa: ""}
+        Input: {width: 50, height: 50, heuristic: "icon", caption: "A black and white image of something", ocr: "", ocr_qa: ""}
         Output: "An icon"
 
-        Input: {width: 400, height: 50, caption: "", ocr: "", ocr_qa: ""}
+        Input: {width: 400, height: 50, heuristic: "banner", caption: "", ocr: "", ocr_qa: ""}
         Output: "A text banner"
 
-        Input: {width: 700, height: 100, caption: "", ocr: "BESTD2021 WINNER", ocr_qa: "Compass"}
+        Input: {width: 700, height: 100, heuristic: "banner", caption: "", ocr: "BESTD2021 WINNER", ocr_qa: "Compass"}
         Output: "A text banner describing Compass's awards"
 
-        Input: {width: 200, height: 200, caption: "", ocr: "CHRIS BEST REALTY", ocr_qa: "Christopher Best"}
+        Input: {width: 200, height: 200, heuristic: "logo", caption: "", ocr: "CHRIS BEST REALTY", ocr_qa: "Christopher Best"}
         Output: "The logo of Christopher Best"
 
-        Input: {width: 400, height: 300, caption: "A pool with a lounge chair and cabana", ocr: "", ocr_qa: ""}
+        Input: {width: 400, height: 300, heuristic: "photograph", caption: "A pool with a lounge chair and cabana", ocr: "", ocr_qa: ""}
         Output: "A pool with a lounge chair and cabana"
 
         Now output the caption corresponding to the data enclosed in """ below.
@@ -332,9 +373,23 @@ async function getGpt(data: DataForFinal): Promise<string> {
 }
 
 async function getFinal(data: DataForFinal): Promise<string> {
-  if (data.width < 100 && data.height < 100) return ''
+  return data.gpt || data.caption
+}
 
-  return ''
+function getHeuristic(data: Partial<OutputRow>): string {
+  const {width = 0, height = 0, caption = ''} = data
+
+  const isSquare = width === height
+  const maxDimension = Math.max(width, height)
+  if (isSquare && maxDimension < 80) return 'icon'
+  else if (isSquare) return 'logo'
+  else if (width > 400 && width > height * 2) return 'banner'
+  else if (caption.includes('photograph')) return 'photograph'
+  else if (isCaptionLikelyTrustworthy(data)) return 'photograph'
+  else if (caption.includes('a blurry')) return 'banner'
+  else if (caption.match(/(sign|poster|collage|clock)/) && maxDimension > 400) return 'banner'
+  else if (caption.match(/(sign|poster|collage|clock)/) && maxDimension <= 400) return 'logo'
+  else return 'unknown'
 }
 
 export async function main() {
@@ -376,11 +431,12 @@ export async function main() {
           outputRow.ocr_qa = ocr_qa
           console.log(`Got OCR-QA for #${index}:`, ocr_qa)
 
+          const heuristic = getHeuristic(outputRow)
           console.log(`Getting GPT for #${index}`)
-          const gpt = await getGpt({width, height, caption, ocr, ocr_qa})
+          const gpt = await getGpt({width, height, caption, ocr, ocr_qa, heuristic})
           console.log(`Got GPT for #${index}`)
 
-          const final = await getFinal({width, height, caption, ocr, ocr_qa})
+          const final = await getFinal({width, height, caption, ocr, ocr_qa, heuristic, gpt})
           console.log(`Got final for #${index}`)
 
           results.push({
