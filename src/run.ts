@@ -183,6 +183,7 @@ async function getOcr(url: string, data: Partial<OutputRow>): Promise<string> {
 }
 async function getOcrQa(url: string, data: Partial<OutputRow>): Promise<string> {
   if (isCaptionLikelyTrustworthy(data)) return ''
+  if ((data.ocr?.length ?? 0) >= 10) return ''
 
   return runPython(['./ocr-qa.py', url], stdout => {
     try {
@@ -257,6 +258,7 @@ function sanitizeUrlForFilename(url: string): string {
     .replace('https://', '')
     .replace(/[^a-z0-9]+/gi, '_')
     .toLowerCase()
+    .slice(0, 120)
 }
 
 function downloadFile(url: string, filePath: string): Promise<void> {
@@ -446,16 +448,17 @@ export async function main() {
             caption,
             ocr,
             ocr_qa,
+            heuristic,
             gpt,
             final,
             width,
             height,
           })
+
+          write(results)
         } catch (err) {
           console.error(`Processing URL #${index} failed:`, err)
         }
-
-        write(results)
       }
     },
     {concurrency: 5},
