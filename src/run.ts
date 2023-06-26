@@ -114,7 +114,6 @@ function concatenateStringValues(data: any): string {
 
 function isLikelyTextBased(data: Partial<OutputRow>): boolean {
   const {caption = ''} = data
-  // This is almost always the icons.
   if (isLikelyIcon(data)) return false
   // Signs, posters, and collages all common captions for logos/banners.
   if (caption.match(/\b(sign|poster|collage)\b/)) return true
@@ -126,16 +125,15 @@ function isLikelyTextBased(data: Partial<OutputRow>): boolean {
 
 function isLikelyIcon(data: Partial<OutputRow>): boolean {
   const {caption = '', width = 0, height = 0} = data
-  if (caption.includes('black and white') || caption.includes('white and black')) return true
-  // It's a perfect square.
-  if (width && height && width === height) return true
-
-  return false
+  const mentionsBlackAndWhite =
+    caption.includes('black and white') || caption.includes('white and black')
+  const isSquare = Boolean(width && height && width === height)
+  return mentionsBlackAndWhite && isSquare
 }
 
-async function getOcr(url: string, caption: string): Promise<string> {
+async function getOcr(url: string, data: Partial<OutputRow>): Promise<string> {
   // If the caption doesn't contain any of the keywords, don't run the OCR.
-  if (!isLikelyTextBased({caption})) return ''
+  if (!isLikelyTextBased(data)) return ''
 
   return runPython(['./ocr.py', url], stdout => {
     try {
@@ -146,8 +144,8 @@ async function getOcr(url: string, caption: string): Promise<string> {
     }
   })
 }
-async function getOcrQa(url: string, caption: string): Promise<string> {
-  if (!isLikelyTextBased({caption})) return ''
+async function getOcrQa(url: string, data: Partial<OutputRow>): Promise<string> {
+  if (!isLikelyTextBased(data)) return ''
 
   return runPython(['./ocr-qa.py', url], stdout => {
     try {
@@ -360,18 +358,22 @@ export async function main() {
           const filePath = await getFileForUrl(row.urlObject.href)
 
           const {width, height} = await getImageDimensions(filePath)
+          const outputRow: Partial<OutputRow> = {...row, width, height}
           console.log(`Got dimensions for #${index}: ${width}x${height}`)
 
           console.log(`Getting caption for #${index}`)
           const caption = row.caption && !FORCE_ALL ? row.caption : await getCaption(filePath)
+          outputRow.caption = caption
           console.log(`Got caption for #${index}:`, caption)
 
           console.log(`Getting OCR for #${index}`)
-          const ocr = row.ocr && !FORCE_ALL ? row.ocr : await getOcr(filePath, caption)
+          const ocr = row.ocr && !FORCE_ALL ? row.ocr : await getOcr(filePath, outputRow)
+          outputRow.ocr = ocr
           console.log(`Got OCR for #${index}:`, ocr)
 
           console.log(`Getting OCR-QA for #${index}`)
-          const ocr_qa = row.ocr_qa && !FORCE_ALL ? row.ocr_qa : await getOcrQa(filePath, caption)
+          const ocr_qa = row.ocr_qa && !FORCE_ALL ? row.ocr_qa : await getOcrQa(filePath, outputRow)
+          outputRow.ocr_qa = ocr_qa
           console.log(`Got OCR-QA for #${index}:`, ocr_qa)
 
           console.log(`Getting GPT for #${index}`)
