@@ -9,7 +9,7 @@ npm i
 conda env create -f environment.yml
 conda activate autocaption
 
-# Setup yoru OpenAi API key
+# Setup your OpenAi API key
 export OPENAI_API_KEY=<API KEY GOES HERE>
 
 # Setup your files
