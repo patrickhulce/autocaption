@@ -1,10 +1,15 @@
 import csv
 
-from common.files import read_rows
+from common.csv import read_rows
+from common.images import download
 
 
 def main():
-    print(read_rows())
+    for row in read_rows():
+        try:
+            download(row['url'])
+        except:
+            print(f"Failed to process {row['url']}")
 
 
 if __name__ == "__main__":
